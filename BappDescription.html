@@ -1,0 +1,51 @@
+<p>-- notorious BIG IP --</p>
+
+<p><a href="https://www.linkedin.com/in/jerkeby/">Christoffer Jerkeby</a>, one of F-Secure’s researchers has discovered an exploitable security flaw that is present in some implementations of F5 Networks’ popular BigIP load balancer. The class of security flaw is often referred to as a Remote Code or Command Execution (RCE) vulnerability. The vulnerability, when exploited, permits an attacker to execute commands on the technology to effect a compromise.</p>
+
+<p>The issue has been disclosed to the vendor and their advisory note can be found <a href="https://support.f5.com/csp/article/K15650046">on their website</a>.</p>
+
+<p>The security issue is present in the product’s iRule feature. iRule is a powerful and flexible feature within the BigIp local traffic management (LTM) system that is used to manage network traffic. iRules are created using the Tool Command Language (Tcl). Certain coding practices may allow an attacker to inject arbitrary Tcl commands, which could be executed in the security context of the target Tcl script.</p>
+
+<p>The coding flaw and class of vulnerability is not new and has been known, along with other command injection vulnerabilities in other popular languages <a href="https://wiki.tcl-lang.org/page/Injection+Attack">for some time</a>.</p>
+
+<p>The language used for defining F5 iRules is a fork of TCL-8.4. The design of the language allows for substitutions in statements and commands and this feature of Tcl can allow injection attacks similar to those seen in SQL or shell scripting languages, where arbitrary user input is interpreted as code and executed. Some iRules parse data from incoming web requests, and incorrectly interpret that data as commands to execute.</p>
+
+<p>Payload: <font face="monospace">[HTTP::respond 666 {vuln}]</font></p>
+
+<p>URL Encoded Payload: <font face="monospace">%5BHTTP%3A%3Arespond%20666%20%7Bvuln%7D%5D</font></p>
+
+<pre>$ curl -I --cookie cookie=%5BHTTP%3A%3Arespond%20666%20%7Bvuln%7D%5D https://www.host.com/index.aspx | grep vuln
+$ curl -I -H RequestHeader=%5BHTTP%3A%3Arespond%20666%20%7Bvuln%7D%5D https://www.host.com/index.aspx | grep vuln</pre>
+
+<p>F-Secure have also contributed to the development of two publicly available open source tools that can analyse Tcl scripts in an effort to help identify if they are vulnerable to command injection flaws. TestTcl is a library for unit testing BIG-IP iRules and Tclscan is a tool that (lexically) scans Tcl code specifically for command injection flaws:</p>
+
+<ul>
+  <li><a href="https://github.com/kugg/tclscan">Tcl scan</a></li>
+  <li><a href="https://github.com/landro/testcl">TestTcl</a></li>
+</ul>
+
+<p>Any Tcl scripts found to be vulnerable can be modified to eradicate the flaw using the guidance found at these resources:</p>
+
+<ul>
+  <li><a href="https://wiki.tcl-lang.org/page/double+substitution">Double substitution</a></li>
+  <li><a href="https://wiki.tcl-lang.org/page/Brace+your+expr-essions">Brace your expr-essions</a></li>
+  <li><a href="https://wiki.tcl-lang.org/page/Static+syntax+analysis">Static syntax analysis</a></li>
+</ul>
+
+<p>Sometimes the presence of an F5 BigIP can be determined in its responses to non-existent content and/or when it sets application cookies in web responses; as can be seen below:</p>
+
+<pre>
+$ curl -I https://www.host.com/302
+HTTP/2 302
+..
+Server: BigIp
+..
+</pre>
+
+<pre>
+$ curl -I https://www.host.com/302
+HTTP/2 302
+..
+set-cookie: BIGip[ .. ]; path=/
+..
+</pre>

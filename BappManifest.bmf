@@ -1,0 +1,11 @@
+Uuid: 4984cf80ea3046a28121d35baba4396b
+ExtensionType: 2
+Name: irule-detector
+RepoName: irule-detector
+ScreenVersion: 1.0
+SerialVersion: 1
+MinPlatformVersion: 0
+ProOnly: True
+Author: Christoffer Jerkeby @Kuggofficial
+ShortDescription: Detect a Remote Code or Command Execution (RCE) vulnerability in some implementations of F5 Networks’ popular BigIP load balancer
+EntryPoint: iruledetector.py
