@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 # Burp iRulesDetector Extension
+# Christoffer Jerkeby F-Secure
+
 try:
     from burp import IBurpExtender
     from burp import IScannerCheck
@@ -12,6 +14,7 @@ try:
     from burp import IParameter
 
     from string import Template
+    import urllib
     import array
     import uuid
     import re
@@ -20,26 +23,48 @@ except ImportError:
     print("Failed to load dependencies. This issue maybe caused"\
           "by using an unstable Jython version.")
 
-# TODO: Make the passive scanner start
-# TODO: Fix the reporting markup
-# TODO: Run testcases on F5 to find vulnerable functions
+# TODO: Write a nicer reporting template text
 
-VERSION = "0.2"
-VERSIONNAME = "wardance"
+VERSION = "0.4"
+VERSIONNAME = "greatjones"
 EXTENDERNAME = "iRules Injection Detector"
+
+# TODO: These probably exist in a class somewhere
+INS_ENTIRE_BODY = 36
+INS_EXTENSION_PROVIDED = 65
+INS_HEADER = 32
+INS_PARAM_AMF = 7
+INS_PARAM_BODY = 1
+INS_PARAM_COOKIE = 2
+INS_PARAM_JSON = 6
+INS_PARAM_MULTIPART_ATTR = 5
+INS_PARAM_NAME_BODY = 35
+INS_PARAM_NAME_URL = 34
+INS_PARAM_URL = 0
+INS_PARAM_XML = 3
+INS_PARAM_XML_ATTR = 4
+INS_UNKNOWN = 127
+INS_URL_PATH_FILENAME = 37
+INS_URL_PATH_FOLDER = 33
+INS_URL_PATH_REST = 33
+INS_USER_PROVIDED = 64
+
+URL_ENCODED_INSERTION_POINTS = [INS_ENTIRE_BODY, INS_PARAM_BODY, INS_PARAM_JSON, INS_PARAM_NAME_URL, INS_PARAM_URL, INS_URL_PATH_FILENAME, INS_URL_PATH_FOLDER, INS_URL_PATH_REST]
 
 class BurpExtender(IBurpExtender, IScannerCheck, IExtensionStateListener, IHttpRequestResponse):
     def registerExtenderCallbacks(self, callbacks):
         """Register the callbacks for the extender."""
         print("Loading...")
         self._callbacks = callbacks
-        self._callbacks.setExtensionName("Detect iRules")
+        self._callbacks.setExtensionName("iRules injector and detector")
         self._callbacks.registerScannerCheck(self)
         self._callbacks.registerExtensionStateListener(self)
         self._helpers = callbacks.getHelpers()
         self.servername = "BigIP"
         self.attackpatterns = [Template("{[TCP::respond $token]}"),
                                Template("[TCP::respond $token]"),
+                               Template("\\[TCP::respond $token\\]"),
+                               Template("; TCP::respond $token"),
                                Template("-crash")]
         print("Loaded {} v{} ({})!".format(EXTENDERNAME, VERSION, VERSIONNAME))
         return
@@ -58,7 +83,7 @@ class BurpExtender(IBurpExtender, IScannerCheck, IExtensionStateListener, IHttpR
         print("Initializing Active scan for iRule injection.")
         vulns = []
         for pattern in self.attackpatterns:
-            token = str(uuid.uuid1())  # UUID1 is generated from the client hostname
+            token = str(uuid.uuid1())
             vuln = self.inject(insertionPoint,
                                baseRequestResponse,
                                pattern,
@@ -87,7 +112,12 @@ class BurpExtender(IBurpExtender, IScannerCheck, IExtensionStateListener, IHttpR
                            "argument list, replace them with curly bracket {}."
         issueconfidence = "Certain"
 
-        pattern = pattern.substitute(token=token)
+        pattern = pattern.substitute(token=token) # actual payload
+
+        insertionType = insertionPoint.getInsertionPointType()
+        if(insertionType in URL_ENCODED_INSERTION_POINTS):
+            # Add URL encoding of payload if payload is in request line
+            pattern = urllib.quote(pattern)
 
         # This ugly sh*t is done because IScannerInsertionPointProvider is incomplete, prove me wrong!
         template = "X" * len(pattern)
@@ -106,6 +136,8 @@ class BurpExtender(IBurpExtender, IScannerCheck, IExtensionStateListener, IHttpR
             # Most probably an attempt need to be done with or without curly brackets.
             # TODO: Report this issue or make smart choice to change strategy,
             #  the later can cause infinite loops
+            # Timeout or conneciton reset often means syntax error or that a long request was made
+            # sometimes BIGIP crashes after to multiple injecitons.
             return None
 
         if not self._starts_with(response, token):
